@@ -18,6 +18,19 @@ defmodule AuctionApiWeb.Router do
     pipe_through(:browser)
 
     get("/", PageController, :home)
+    # get("/auctions", PageController, :auctions)
+    # live("/switch", LightLive)
+  end
+
+  scope "/auctions", AuctionApiWeb do
+    # scope "/auctions" do
+    pipe_through(:browser)
+
+    # get("/", AuctionController, :index)
+    live "/", AuctionsIndexLive
+    # get("/:auction_name", AuctionController, :show)
+    live "/:auction_name", AuctionLive
+    # post("/auctions", AuctionController, :create)
   end
 
   scope "/api" do

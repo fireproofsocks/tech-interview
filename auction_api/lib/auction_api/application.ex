@@ -16,6 +16,9 @@ defmodule AuctionApi.Application do
       {Finch, name: AuctionApi.Finch},
       # Start a worker by calling: AuctionApi.Worker.start_link(arg)
       # {AuctionApi.Worker, arg},
+      # Custom registry so we can store pids for each auction and
+      # look them up by the auction name
+      {Registry, keys: :unique, name: AuctionApi.Registry},
       # Start to serve requests, typically the last entry
       AuctionApiWeb.Endpoint
     ]

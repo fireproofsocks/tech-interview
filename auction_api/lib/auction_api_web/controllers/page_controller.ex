@@ -6,4 +6,10 @@ defmodule AuctionApiWeb.PageController do
     # so skip the default app layout.
     render(conn, :home, layout: false)
   end
+
+  def auctions(conn, _params) do
+    # text(conn, "in auctions now")
+    active_auctions = [{"a1", self()}]
+    render(conn, :auctions, active_auctions: active_auctions)
+  end
 end
