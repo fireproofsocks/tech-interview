@@ -38,10 +38,9 @@ defmodule AuctionApiWeb.AuctionLive do
 
     ~H"""
     <h2 class="text-[2rem] mt-4 font-semibold leading-10 tracking-tighter text-zinc-900 text-balance">
-      Auction {@name}
+      Auction {@name} completed!
     </h2>
     <div id="auction">
-      <div></div>
       <div>Winning bid: ${@current_bid}</div>
       <%= if @highest_bidder == assigns.current_user.email do %>
         <div>Congratulations! You won the auction!</div>
@@ -75,6 +74,7 @@ defmodule AuctionApiWeb.AuctionLive do
     """
   end
 
+  # TODO: move to dedicated module
   def to_hh_mm_ss(0), do: "0:00"
 
   def to_hh_mm_ss(seconds) do
@@ -104,8 +104,7 @@ defmodule AuctionApiWeb.AuctionLive do
   end
 
   # Receive pubsub messages here
-  def handle_info(%Auction.State{} = auction_state, socket) do
-    Logger.debug("Auction completed; rendering liveview")
+  def handle_info(%Auction{} = auction_state, socket) do
     # dbg(auction_state)
 
     assigns =

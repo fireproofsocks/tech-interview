@@ -13,24 +13,17 @@ defmodule AuctionApi.Auction do
 
   require Logger
 
-  defmodule State do
-    defstruct [
-      :name,
-      :state,
-      :duration,
-      :bids,
-      :current_bid,
-      :highest_bidder,
-      :seconds_remaining,
-      :started_at,
-      :completed_at
-    ]
-  end
-
   @primary_key false
   embedded_schema do
-    field :name, :string
+    field :bids, {:array, :map}
+    field :completed_at, :utc_datetime
+    field :current_bid, :integer
     field :duration, :integer
+    field :highest_bidder, :string
+    field :name, :string
+    field :seconds_remaining, :integer
+    field :started_at, :utc_datetime
+    field :state, Ecto.Enum, values: [:running, :completed]
   end
 
   @doc """
@@ -76,7 +69,7 @@ defmodule AuctionApi.Auction do
     Process.send_after(self(), :decrement_time, 1000)
 
     {:ok,
-     %State{
+     %__MODULE__{
        name: name,
        state: :running,
        duration: duration,
@@ -124,7 +117,7 @@ defmodule AuctionApi.Auction do
   @doc """
   Gets the state of the given auction, if active, otherwise an error is returned.
   """
-  @spec state(auction_pid :: pid()) :: {:ok, %State{}} | {:error, any()}
+  @spec state(auction_pid :: pid()) :: {:ok, %__MODULE__{}} | {:error, any()}
   def state(auction_pid) when is_pid(auction_pid) do
     try do
       GenServer.call(auction_pid, :state)
@@ -135,17 +128,17 @@ defmodule AuctionApi.Auction do
     end
   end
 
-  def handle_call({:bid, username}, _from, %State{} = state)
+  def handle_call({:bid, username}, _from, %__MODULE__{} = state)
       when username == state.highest_bidder do
     {:reply, {:error, "#{username} is already the highest bidder"}, state}
   end
 
-  def handle_call({:bid, username}, _from, %State{} = state) do
+  def handle_call({:bid, username}, _from, %__MODULE__{} = state) do
     new_bid = Bids.minimum_bid(state.current_bid)
 
-    state = %State{
+    state = %__MODULE__{
       state
-      | bids: [{username, new_bid, DateTime.utc_now()} | state.bids],
+      | bids: [%{username: username, bid: new_bid, created_at: DateTime.utc_now()} | state.bids],
         highest_bidder: username,
         current_bid: new_bid
     }
@@ -160,7 +153,7 @@ defmodule AuctionApi.Auction do
   end
 
   def handle_info(:end_auction, state) do
-    state = %State{state | state: :completed, completed_at: DateTime.utc_now()}
+    state = %__MODULE__{state | state: :completed, completed_at: DateTime.utc_now()}
     Logger.debug("Auction #{state.name} has ended")
     # TODO: save this somewhere?
     PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", state)
@@ -178,7 +171,7 @@ defmodule AuctionApi.Auction do
     # TODO: we could adjust for jitter here by using milliseconds
     Process.send_after(self(), :decrement_time, 1000)
     PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", "Updated auction #{state.name}")
-    {:noreply, %State{state | seconds_remaining: seconds_remaining}}
+    {:noreply, %__MODULE__{state | seconds_remaining: seconds_remaining}}
   end
 
   defp seconds_remaining(started_at, duration) do
