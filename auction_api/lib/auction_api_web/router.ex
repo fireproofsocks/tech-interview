@@ -23,15 +23,17 @@ defmodule AuctionApiWeb.Router do
     get("/", PageController, :home)
   end
 
-  scope "/auctions", AuctionApiWeb do
-    # scope "/auctions" do
-    pipe_through(:browser)
+  live_session :authenticated, on_mount: [{AuctionApiWeb.UserAuth, :ensure_authenticated}] do
+    scope "/auctions", AuctionApiWeb do
+      # scope "/auctions" do
+      pipe_through(:browser)
 
-    # get("/", AuctionController, :index)
-    live "/", AuctionsIndexLive
-    # get("/:auction_name", AuctionController, :show)
-    live "/:auction_name", AuctionLive
-    # post("/auctions", AuctionController, :create)
+      # get("/", AuctionController, :index)
+      live "/", AuctionsIndexLive
+      # get("/:auction_name", AuctionController, :show)
+      live "/:auction_name", AuctionLive
+      # post("/auctions", AuctionController, :create)
+    end
   end
 
   scope "/api" do

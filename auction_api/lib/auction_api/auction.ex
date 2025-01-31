@@ -5,6 +5,9 @@ defmodule AuctionApi.Auction do
   use GenServer
 
   alias AuctionApi.Bids
+  alias Phoenix.PubSub
+
+  require Logger
 
   defmodule State do
     defstruct [:name, :duration, :bids, :current_bid, :highest_bidder, :started_at, :completed_at]
@@ -29,16 +32,19 @@ defmodule AuctionApi.Auction do
   def start_link(opts \\ []) do
     auction_name = Keyword.fetch!(opts, :name)
     name = {:via, Registry, {AuctionApi.Registry, auction_name}}
+    # publish PubSub event
     GenServer.start_link(__MODULE__, opts, name: name)
   end
 
   def init(opts) do
+    name = Keyword.fetch!(opts, :name)
     duration = Keyword.fetch!(opts, :duration)
+    PubSub.broadcast(AuctionApi.PubSub, "auctions:updated", "Starting new auction #{name}")
     Process.send_after(self(), :end_auction, duration * 1000)
 
     {:ok,
      %State{
-       name: Keyword.fetch!(opts, :name),
+       name: name,
        duration: duration,
        current_bid: Keyword.fetch!(opts, :starting_bid),
        bids: [],
@@ -62,10 +68,12 @@ defmodule AuctionApi.Auction do
   @spec bid(auction_pid :: pid(), username :: String.t()) ::
           {:ok, any()} | {:error, String.t()}
   def bid(auction_pid, username) when is_pid(auction_pid) and is_binary(username) do
-    if Process.alive?(auction_pid) do
+    try do
       GenServer.call(auction_pid, {:bid, username})
-    else
-      {:error, "That auction is not open"}
+    catch
+      :exit, reason ->
+        Logger.warning(inspect(reason))
+        {:error, "That auction is not open"}
     end
   end
 
@@ -80,10 +88,17 @@ defmodule AuctionApi.Auction do
   end
 
   @doc """
-  Gets the state of the given auction
+  Gets the state of the given auction, if active, otherwise an error is returned.
   """
+  @spec state(auction_pid :: pid()) :: {:ok, %State{}} | {:error, any()}
   def state(auction_pid) when is_pid(auction_pid) do
-    GenServer.call(auction_pid, :state)
+    try do
+      GenServer.call(auction_pid, :state)
+    catch
+      :exit, reason ->
+        Logger.warning(inspect(reason))
+        {:error, "That auction is not open"}
+    end
   end
 
   def handle_call({:bid, username}, _from, %State{} = state)
@@ -112,6 +127,7 @@ defmodule AuctionApi.Auction do
     state = %State{state | completed_at: DateTime.utc_now()}
     IO.inspect(state, label: "Auction is over")
     # TODO: save this somewhere?
+    PubSub.broadcast(AuctionApi.PubSub, "auctions:updated", "Ending auction #{state.name}")
     exit(:normal)
     {:noreply, []}
   end
