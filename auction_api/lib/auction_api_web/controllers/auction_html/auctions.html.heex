@@ -7,7 +7,7 @@
   <div class="mx-auto max-w-xl lg:mx-0">
     <ul>
       <%= for {auction_name, _} <- @active_auctions do %>
-        <li><%= auction_name %></li>
+        <li>{auction_name}</li>
       <% end %>
     </ul>
   </div>

@@ -1,16 +1,26 @@
 defmodule AuctionApi.Auction do
   @moduledoc """
-  A Genserver to run an auction. Terminates after
+  A Genserver to run an auction. Terminates after the amount of seconds specified
+  in its `:duration`.
   """
+  use Ecto.Schema
   use GenServer
 
   alias AuctionApi.Bids
   alias Phoenix.PubSub
 
+  import Ecto.Changeset
+
   require Logger
 
   defmodule State do
     defstruct [:name, :duration, :bids, :current_bid, :highest_bidder, :started_at, :completed_at]
+  end
+
+  @primary_key false
+  embedded_schema do
+    field :name, :string
+    field :duration, :integer
   end
 
   @doc """
@@ -31,9 +41,20 @@ defmodule AuctionApi.Auction do
   """
   def start_link(opts \\ []) do
     auction_name = Keyword.fetch!(opts, :name)
+    # Register into our custom registry so we always know which auctions are running
     name = {:via, Registry, {AuctionApi.Registry, auction_name}}
-    # publish PubSub event
     GenServer.start_link(__MODULE__, opts, name: name)
+  end
+
+  # AuctionApi.Auction.new(%{"name" => "a", "duration" => 65})
+  # TODO: replace start_link? inputs as map
+  def new(%{"name" => name, "duration" => duration}) do
+    # Register into our custom registry so we always know which auctions are running
+    process_name = {:via, Registry, {AuctionApi.Registry, name}}
+
+    GenServer.start_link(__MODULE__, [name: name, duration: duration, starting_bid: 1],
+      name: process_name
+    )
   end
 
   def init(opts) do
@@ -111,10 +132,12 @@ defmodule AuctionApi.Auction do
 
     state = %State{
       state
-      | bids: [{username, new_bid} | state.bids],
+      | bids: [{username, new_bid, DateTime.utc_now()} | state.bids],
         highest_bidder: username,
         current_bid: new_bid
     }
+
+    PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", "Updated auction #{state.name}")
 
     {:reply, {:ok, state}, state}
   end
@@ -125,10 +148,19 @@ defmodule AuctionApi.Auction do
 
   def handle_info(:end_auction, state) do
     state = %State{state | completed_at: DateTime.utc_now()}
-    IO.inspect(state, label: "Auction is over")
+    Logger.debug("Auction #{state.name} has ended")
     # TODO: save this somewhere?
+    PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", "Ending auction #{state.name}")
     PubSub.broadcast(AuctionApi.PubSub, "auctions:updated", "Ending auction #{state.name}")
     exit(:normal)
     {:noreply, []}
+  end
+
+  def create_changeset(attrs, _opts \\ []) do
+    %__MODULE__{}
+    |> cast(attrs, [:name, :duration])
+    |> validate_required([:name, :duration])
+    |> validate_length(:name, min: 1, max: 64)
+    |> validate_number(:duration, greater_than_or_equal_to: 30)
   end
 end
