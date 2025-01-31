@@ -14,7 +14,17 @@ defmodule AuctionApi.Auction do
   require Logger
 
   defmodule State do
-    defstruct [:name, :duration, :bids, :current_bid, :highest_bidder, :started_at, :completed_at]
+    defstruct [
+      :name,
+      :state,
+      :duration,
+      :bids,
+      :current_bid,
+      :highest_bidder,
+      :seconds_remaining,
+      :started_at,
+      :completed_at
+    ]
   end
 
   @primary_key false
@@ -46,7 +56,7 @@ defmodule AuctionApi.Auction do
     GenServer.start_link(__MODULE__, opts, name: name)
   end
 
-  # AuctionApi.Auction.new(%{"name" => "a", "duration" => 65})
+  # AuctionApi.Auction.new(%{"name" => "a", "duration" => 15})
   # TODO: replace start_link? inputs as map
   def new(%{"name" => name, "duration" => duration}) do
     # Register into our custom registry so we always know which auctions are running
@@ -63,9 +73,12 @@ defmodule AuctionApi.Auction do
     PubSub.broadcast(AuctionApi.PubSub, "auctions:updated", "Starting new auction #{name}")
     Process.send_after(self(), :end_auction, duration * 1000)
 
+    Process.send_after(self(), :decrement_time, 1000)
+
     {:ok,
      %State{
        name: name,
+       state: :running,
        duration: duration,
        current_bid: Keyword.fetch!(opts, :starting_bid),
        bids: [],
@@ -147,13 +160,29 @@ defmodule AuctionApi.Auction do
   end
 
   def handle_info(:end_auction, state) do
-    state = %State{state | completed_at: DateTime.utc_now()}
+    state = %State{state | state: :completed, completed_at: DateTime.utc_now()}
     Logger.debug("Auction #{state.name} has ended")
     # TODO: save this somewhere?
-    PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", "Ending auction #{state.name}")
+    PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", state)
+    PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}:completed", state)
     PubSub.broadcast(AuctionApi.PubSub, "auctions:updated", "Ending auction #{state.name}")
     exit(:normal)
     {:noreply, []}
+  end
+
+  # The timer count-down
+  def handle_info(:decrement_time, state) do
+    seconds_remaining = seconds_remaining(state.started_at, state.duration)
+
+    # send the next update in 1 second
+    # TODO: we could adjust for jitter here by using milliseconds
+    Process.send_after(self(), :decrement_time, 1000)
+    PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", "Updated auction #{state.name}")
+    {:noreply, %State{state | seconds_remaining: seconds_remaining}}
+  end
+
+  defp seconds_remaining(started_at, duration) do
+    DateTime.diff(started_at, DateTime.utc_now(), :second) + duration
   end
 
   def create_changeset(attrs, _opts \\ []) do
