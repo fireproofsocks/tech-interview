@@ -4,11 +4,8 @@ defmodule AuctionApiWeb.AuctionLive do
   alias Phoenix.PubSub
 
   def mount(%{"auction_name" => auction_name}, _session, socket) do
-    # dbg(socket)
-
     if connected?(socket) do
       PubSub.subscribe(AuctionApi.PubSub, "auction:#{auction_name}")
-      PubSub.subscribe(AuctionApi.PubSub, "auction:#{auction_name}:completed")
     end
 
     socket =
@@ -34,8 +31,6 @@ defmodule AuctionApiWeb.AuctionLive do
   end
 
   def render(%{state: :completed} = assigns) do
-    # dbg(assigns)
-
     ~H"""
     <h2 class="text-[2rem] mt-4 font-semibold leading-10 tracking-tighter text-zinc-900 text-balance">
       Auction {@name} completed!
@@ -52,8 +47,6 @@ defmodule AuctionApiWeb.AuctionLive do
   end
 
   def render(assigns) do
-    # dbg(assigns)
-
     ~H"""
     <h2 class="text-[2rem] mt-4 font-semibold leading-10 tracking-tighter text-zinc-900 text-balance">
       Auction {@name}
@@ -105,18 +98,11 @@ defmodule AuctionApiWeb.AuctionLive do
 
   # Receive pubsub messages here
   def handle_info(%Auction{} = auction_state, socket) do
-    # dbg(auction_state)
-
     assigns =
       auction_state
       |> Map.from_struct()
       |> Map.put(:current_user, socket.assigns.current_user)
 
     {:noreply, assign(socket, assigns)}
-  end
-
-  def handle_info(_pubsub_msg, socket) do
-    auction_pid = Auction.pid(socket.assigns.name)
-    {:noreply, assign(socket, state_to_assigns(auction_pid, socket))}
   end
 end

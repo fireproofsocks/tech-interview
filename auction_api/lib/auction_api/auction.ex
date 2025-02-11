@@ -143,7 +143,7 @@ defmodule AuctionApi.Auction do
         current_bid: new_bid
     }
 
-    PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", "Updated auction #{state.name}")
+    PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", state)
 
     {:reply, {:ok, state}, state}
   end
@@ -157,7 +157,7 @@ defmodule AuctionApi.Auction do
     Logger.debug("Auction #{state.name} has ended")
     # TODO: save this somewhere?
     PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", state)
-    PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}:completed", state)
+    # Update list of auctions
     PubSub.broadcast(AuctionApi.PubSub, "auctions:updated", "Ending auction #{state.name}")
     exit(:normal)
     {:noreply, []}
@@ -170,7 +170,7 @@ defmodule AuctionApi.Auction do
     # send the next update in 1 second
     # TODO: we could adjust for jitter here by using milliseconds
     Process.send_after(self(), :decrement_time, 1000)
-    PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", "Updated auction #{state.name}")
+    PubSub.broadcast(AuctionApi.PubSub, "auction:#{state.name}", state)
     {:noreply, %__MODULE__{state | seconds_remaining: seconds_remaining}}
   end
 
